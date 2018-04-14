@@ -27,24 +27,24 @@ Think for a moment about the type of data a heavier client application might sen
 ```ruby
 # Example of params Rails is NOT GREAT at dealing with
 {
-  customer_id: '999999',
+  customer_id: '',
   shipping_address: {
     street1: '',
     street2: '',
     city: '',
-    state: ''
+    state: '',
     zip: ''
   },
   billing_address: {
     street1: '',
     street2: '',
     city: '',
-    state: ''
+    state: '',
     zip: ''
   },
   line_items: [
-    {item_id: '', quantity: 1}
-    {item_id: '', quantity: 2}
+    {item_id: '', quantity: ''},
+    {item_id: '', quantity: ''}
   ]
 }
 ```
@@ -59,17 +59,17 @@ What is the problem? JSON clients typically expect JSON data to use `camelCase` 
 
 #### Other Benefits
 
-In addition to filling the gaps outlined above, there are other benefits to using `controller_commands`. These benefits are subjective and are presented as such. your mileage may vary.
+In addition to filling the gaps outlined above, there are other benefits to using `controller_commands`. These benefits are subjective and are presented as such. Your mileage may vary.
 
 By decoupling validation from models it is very easy to read and understand what is required to perform a particular API action. You may also find that validation defined at a controller action/command-level is also easier to read and understand.
 
 While Rails does allow partial validation of a model, using validation at the controller action-level makes it easier to see what's being validated and the context for why those fields are being validated.
 
-When adding validation to a model, there is a greater chance of unintentionally impacting other parts of the application with the new validation. Changing validation in one action is less likely to impact other parts of your application.
+When adding validation to a model in a traditional Rails application, there is a greater chance of unintentionally impacting other parts of the application with the new validation. By scoping validation to a single action, changing validation in one action is less likely to impact other parts of your application.
 
-Commands can more easily and clearly modify multiple models at the same time and it becomes clear, when looking at the model why these modifications are being made at the same time.
+Commands can more easily and clearly modify multiple models at the same time and it becomes clear, when looking at the command, why these modifications are being made at the same time. Additionally, by extracting the processing from controller actions, a seperation of concerns is enforced such that business-oriented code is placed in the command and http-related code is handled by `controller_commands` itself. Arguably, something similar could be said about moving business-oriented code out of Active Record models (though it is so common to have business-oriented code in models in traditional rails applications that it could almost be viewed as contriversial to move away from that approach completely).
 
-By supporting the existing Rails controller action approach, we gain two key benefits. First, it is easier to start using `controller_commands` in an existing Rails app. You can start using commands inside your existing controllers, simply as new controller actions which are called from client-side JavaScript in your views. Second, you can utilize your existing controller action authorization scheme to allow/disallow users to perform commands.
+By integrating commands with controller actions, we gain two other key benefits. First, it is easier to start using `controller_commands` in an existing Rails app. You can start using commands inside your existing controllers as new controller actions which are called from client-side JavaScript in your views. Second, you can utilize your existing controller action authorization scheme to allow/disallow users to perform commands.
 
 ## Getting Started
 
@@ -91,33 +91,66 @@ Or install it yourself as:
 
 ### Usage
 
-Following is an example:
+Continuing on with the example of validating and processing an order, please review the following code which is designed to validate the example nested order data presented earlier in this readme.
 
 ```ruby
-class MyRecordController < ApplicationController
+class OrdersController < ApplicationController
   include ControllerCommands::Concern
 
-  def save_command
-    handle_command(context: {parent: ParentRecord.find(params[:parent_id])})
+  # Note: the command class is created based on the name of the action. You can
+  # override the default approach by providing the `command_klass: KlassName`
+  # option as a parameter to `#handle_command`.
+
+  def create_command
+    handle_command(context: {store: Store.find(store_id_from_hostname)})
   end
 
-  class SaveCommand
+  class CreateCommand
     include ControllerCommands::Command
+
+    # Note: this block defines the dry-validation schema which will be applied
+    # to the incoming params automatically. If validation fails, the error
+    # collection will be rendered as the controller action result. The client
+    # application can then render the errors in such a way that the user can
+    # resolve the validation errors and resubmit.
 
     validation_schema do |context|
       Dry::Validation.JSON do
-        required(:id).maybe(:int?)
-        required(:first_name).maybe(:str?)
-        required(:last_name).maybe(:str?)
+        required(:customer_id).filled(:int?)
+        required(:shipping_address).schema do
+          required(:street1).filled(:str?)
+          required(:street2).maybe(:str?)
+          required(:city).filled(:str?)
+          required(:state).filled(:str?)
+          required(:zip).filled(:str?)
+        end
+        required(:billing_address).schema do
+          required(:street1).filled(:str?)
+          required(:street2).maybe(:str?)
+          required(:city).filled(:str?)
+          required(:state).filled(:str?)
+          required(:zip).filled(:str?)
+        end
+        required(:line_items).each do
+          required(:item_id).filled(:str?)
+          required(:quantity).filled(:int?)
         end
       end
     end
 
-    handle_command do |context, valid_params|
-      parent = context.fetch(:parent)
-      child = parent.child || parent.build_child
-      child.save!(valid_params)
-      {id: child.id}
+    # This is the block which will perform processing when validation succeeds.
+    # The context hash we pass in from the controller is available here. You can
+    # use the context hash to provide models to the command which are already
+    # being loaded through controller before filters, middleware, etc. The attrs
+    # argument is the dry-validation result output which only includes values
+    # defined in `validation_schema`. The result of the `handle_command` block
+    # will be rendered as the JSON response to the client.
+
+    handle_command do |context, attrs|
+      store = context.fetch(:store)
+      customer = store.customers.find(attrs[:customer_id])
+      order = customer.orders.create!(attrs)
+      {id: order.id}
     end
   end
 
