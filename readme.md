@@ -15,7 +15,7 @@ What gaps does this gem fill? There are two problems that are not currently addr
 First, Rails controller actions and the their supporting Active Record models are designed to work with "flat" incoming data - data with very little nesting. A typical Rails controller action receives params that map very closely to a single model. Active Model validation is oriented toward this "flat" incoming data.
 
 ```ruby
-# Example of params Rails is GREAT at dealing with
+# Example of params which Rails is GREAT at validating
 {
   first_name: 'John',
   last_name: 'Smith'
@@ -25,7 +25,7 @@ First, Rails controller actions and the their supporting Active Record models ar
 Think for a moment about the type of data a heavier client application might send to a JSON-based API. How does Rails Active Model validation fair when presented with a complex nested data structure such as an online order. An order would have a few different parts: a billing address, a shipping address, details about the order itself (the customer id, for example) and a collection of line items. How will you validate this incoming order data in a single controller action? Rails validation is not designed to deal well with nested incoming params.
 
 ```ruby
-# Example of params Rails is NOT GREAT at dealing with
+# Example of params which Rails is NOT GREAT at validating
 {
   customer_id: '',
   shipping_address: {
@@ -91,15 +91,11 @@ Or install it yourself as:
 
 ### Usage
 
-Continuing on with the example of validating and processing an order, please review the following code which is designed to validate the example nested order data presented earlier in this readme.
+Continuing on with the example of validating and processing an order, the following example code is designed to accept the example nested order data presented earlier in this readme, validate the incoming data and save a new order using active record.
 
 ```ruby
 class OrdersController < ApplicationController
   include ControllerCommands::Concern
-
-  # Note: the command class is created based on the name of the action. You can
-  # override the default approach by providing the `command_klass: KlassName`
-  # option as a parameter to `#handle_command`.
 
   def create_command
     handle_command(context: {store: Store.find(store_id_from_hostname)})
@@ -107,12 +103,6 @@ class OrdersController < ApplicationController
 
   class CreateCommand
     include ControllerCommands::Command
-
-    # Note: this block defines the dry-validation schema which will be applied
-    # to the incoming params automatically. If validation fails, the error
-    # collection will be rendered as the controller action result. The client
-    # application can then render the errors in such a way that the user can
-    # resolve the validation errors and resubmit.
 
     validation_schema do |context|
       Dry::Validation.JSON do
@@ -138,24 +128,100 @@ class OrdersController < ApplicationController
       end
     end
 
-    # This is the block which will perform processing when validation succeeds.
-    # The context hash we pass in from the controller is available here. You can
-    # use the context hash to provide models to the command which are already
-    # being loaded through controller before filters, middleware, etc. The attrs
-    # argument is the dry-validation result output which only includes values
-    # defined in `validation_schema`. The result of the `process_command` block
-    # will be rendered as the JSON response to the client.
-
     process_command do |context, attrs|
       store = context.fetch(:store)
-      customer = store.customers.find(attrs[:customer_id])
-      order = customer.orders.create!(attrs)
+      customer = store.customers.find(attrs.fetch(:customer_id))
+
+      order = customer.orders.build
+      order.build_shipping_address(attrs.fetch(:shipping_address))
+      order.build_billing_address(attrs.fetch(:billing_address))
+      attrs.fetch(:line_items).each {|line_item_attrs| order.line_items.build(line_item_attrs)}
+      order.save!
+
       {id: order.id}
     end
   end
 
 end
 ```
+
+Let's walk through this controller and discuss what each part is doing.
+
+```ruby
+class OrdersController < ApplicationController
+  include ControllerCommands::Concern
+```
+
+First, we include `ControllerCommands::Concern`.
+
+```ruby
+  def create_command
+    handle_command(context: {store: Store.find(store_id_from_hostname)})
+  end
+```
+
+Next, we define an action, which is routed like a traditional Rails controller action should be. In this case, we have named the action `create_command`. We would need to add this action to the routes.rb file to make it accessible as an HTTP call from a client application. Although we are not doing it here for the sake of this example, we would expect this controller to require authentication and possibly authorization for the `create_command` action.
+
+```ruby
+  class CreateCommand
+    include ControllerCommands::Command
+```
+
+We define a class with the sole purpose of responding to an API call. By using a separate class for this purpose, we enforce a seperation of concerns and the command class is isolated from the HTTP-oriented concerns of the controller which uses it.
+
+We include `ControllerCommands::Command` in the class in order to provide the class methods used to wire up validation and processing.
+
+The `#handle_command` method called in the controller action will inspect the current controller action name and use that to create the command class. You can  override this default behavior by providing the `command_klass: Klass` option as a parameter to `#handle_command` called in the controller.
+
+```ruby
+    validation_schema do |context|
+      Dry::Validation.JSON do
+        required(:customer_id).filled(:int?)
+        required(:shipping_address).schema do
+          required(:street1).filled(:str?)
+          required(:street2).maybe(:str?)
+          required(:city).filled(:str?)
+          required(:state).filled(:str?)
+          required(:zip).filled(:str?)
+        end
+        required(:billing_address).schema do
+          required(:street1).filled(:str?)
+          required(:street2).maybe(:str?)
+          required(:city).filled(:str?)
+          required(:state).filled(:str?)
+          required(:zip).filled(:str?)
+        end
+        required(:line_items).each do
+          required(:item_id).filled(:str?)
+          required(:quantity).filled(:int?)
+        end
+      end
+    end
+```
+
+The `validation_schema` block defines the dry-validation schema which will be applied to the incoming params automatically. Notice that we are using `Dry::Validation.JSON` which handles validating JSON types for us automatically. If validation fails, the errors collection will be rendered as JSON output for the controller action. The client application can then render the errors in such a way that the user can resolve the validation errors and resubmit the form.
+
+```ruby
+    process_command do |context, attrs|
+      store = context.fetch(:store)
+      customer = store.customers.find(attrs.fetch(:customer_id))
+
+      order = customer.orders.build
+      order.build_shipping_address(attrs.fetch(:shipping_address))
+      order.build_billing_address(attrs.fetch(:billing_address))
+      attrs.fetch(:line_items).each {|line_item_attrs| order.line_items.build(line_item_attrs)}
+      order.save!
+
+      {id: order.id}
+    end
+  end
+```
+
+The `process_command` block will perform processing when validation succeeds. The context hash we pass in from the controller is available here. You can inject anything from the controller that you might need in order to perform processing. For example, you can provide models to the command which are already being loaded through controller before filters, middleware, etc.
+
+The `attrs` argument is the dry-validation output which only includes values defined in `validation_schema`. The result of the `process_command` block will be rendered as the JSON output of the controller action, which is sent to the client application.
+
+On a side note, the command class is defining validation and processing as blocks given in the class definition. Using this approach allows us to get the benefits of inheritance using the template method pattern but gives us the added benefit of keeping the code in each block isolated from other code in the class. This does not allow us to as easily break processing code into separate functions. However, if `process_command` blocks are small and focused it renders the ability to extract code from them less useful to begin with.
 
 ## Development
 
@@ -183,4 +249,4 @@ Sorry, there are currently no tests.
 
 ## Contributing
 
-Bug reports and pull requests are welcome on GitHub at [here](https://github.com/accelecode/controller_commands.)
+Bug reports and pull requests are welcome on GitHub [here](https://github.com/accelecode/controller_commands).
