@@ -143,10 +143,10 @@ class OrdersController < ApplicationController
     # use the context hash to provide models to the command which are already
     # being loaded through controller before filters, middleware, etc. The attrs
     # argument is the dry-validation result output which only includes values
-    # defined in `validation_schema`. The result of the `handle_command` block
+    # defined in `validation_schema`. The result of the `process_command` block
     # will be rendered as the JSON response to the client.
 
-    handle_command do |context, attrs|
+    process_command do |context, attrs|
       store = context.fetch(:store)
       customer = store.customers.find(attrs[:customer_id])
       order = customer.orders.create!(attrs)

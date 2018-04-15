@@ -22,7 +22,7 @@ module ControllerCommands
         @success_message_block&.call
       end
 
-      def handle_command(&block)
+      def process_command(&block)
         @perform_block = block
       end
 
