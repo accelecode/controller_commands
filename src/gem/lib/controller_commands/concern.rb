@@ -17,7 +17,9 @@ module ControllerCommands
       is_command_valid = command.validate_params
       result =
         if is_command_valid
-          flash[:notice] = command.success_message
+          if respond_to?(:flash)
+            flash[:notice] = command.success_message
+          end
           {data: command.perform}
         else
           {errors: command.errors}
