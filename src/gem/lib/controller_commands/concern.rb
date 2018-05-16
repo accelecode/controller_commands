@@ -20,7 +20,8 @@ module ControllerCommands
           if respond_to?(:flash)
             flash[:notice] = command.success_message
           end
-          {data: command.perform}
+          output = {data: command.perform}
+          command.render_success(output)
         else
           {errors: command.errors}
         end

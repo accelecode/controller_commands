@@ -29,6 +29,16 @@ module ControllerCommands
       def perform(context, validated_params)
         @perform_block.call(context, validated_params)
       end
+
+      def before_success_render(&block)
+        @before_render_success_block = block
+      end
+
+      def execute_before_success_render(context, output)
+        @before_render_success_block ?
+          @before_render_success_block.call(context, output) :
+          output
+      end
     end
 
     def self.included(base)
@@ -63,6 +73,10 @@ module ControllerCommands
 
     def perform
       self.class.perform(@context, validated_params)
+    end
+
+    def render_success(output)
+      self.class.execute_before_success_render(@context, output)
     end
 
   end
