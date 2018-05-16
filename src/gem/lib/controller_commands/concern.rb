@@ -41,7 +41,8 @@ module ControllerCommands
       # The default JSON parsing in Rails replaces empty arrays with nil as a part of their solution to the CVE above.
       # This is the reason we are manually parsing the JSON request body. Consistent use of dry-validation schema types
       # should protect us from this CVE and also provide the same protection as Rails strong parameters.
-      parsed_params = JSON.parse(request.body.read)
+      body = request.body.read
+      parsed_params = (body.present? ? JSON.parse(body) : {})
       HashKeyTransformer.send(key_transformer_strategy, parsed_params)
     end
 
