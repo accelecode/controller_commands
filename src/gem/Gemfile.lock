@@ -1,7 +1,7 @@
 PATH
   remote: .
   specs:
-    controller_commands (0.1.1)
+    controller_commands (0.1.2)
       dry-validation (~> 0.11)
       hash_key_transformer (~> 0.1)
       rails (>= 4.2)
@@ -49,7 +49,7 @@ GEM
     arel (8.0.0)
     builder (3.2.3)
     concurrent-ruby (1.0.5)
-    crass (1.0.3)
+    crass (1.0.4)
     dry-configurable (0.7.0)
       concurrent-ruby (~> 1.0)
     dry-container (0.6.0)
