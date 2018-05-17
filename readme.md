@@ -221,7 +221,14 @@ The `process_command` block will perform processing when validation succeeds. Th
 
 The `attrs` argument is the dry-validation output which only includes values defined in `validation_schema`. The result of the `process_command` block will be rendered as the JSON output of the controller action, which is sent to the client application.
 
-On a side note, the command class is defining validation and processing as blocks given in the class definition. Using this approach allows us to get the benefits of inheritance using the template method pattern but gives us the added benefit of keeping the code in each block isolated from other code in the class. This does not allow us to as easily break processing code into separate functions. However, if `process_command` blocks are small and focused it renders the ability to extract code from them less useful to begin with.
+On a side note, the command class is defining validation and processing as blocks given in the class definition. Using this approach allows us to get the benefits of inheritance using the template method pattern but gives us the added benefit of keeping the code in each block isolated from other code in the class. This does not allow us to as easily break processing code into separate functions within the same class. However, if `process_command` blocks are small and focused it renders the ability to extract code from them less useful to begin with. Additionally, methods can be extracted into modules (or controller concerns) and those modules used to extend the block itself:
+
+```ruby
+process_command do |context, attrs|
+  extend(MyCustomModule)
+  # Use the extracted methods here
+end
+```
 
 ## Development
 
