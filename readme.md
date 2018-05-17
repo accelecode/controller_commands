@@ -8,6 +8,10 @@ The standard Rails MVC approach to defining controller actions, including valida
 
 However, as web application development has progressed, there has been a shift toward moving part or all of an application's UI (the view, V in MVC) into a client application. Client applications could be a JavaScript application in the browser or one or more mobile applications. It is common to use JSON-based APIs to make data available to client applications. While Rails has progressed in making it easier to provide JSON-based APIs, this gem provides further conventions which make it even easier. This gem also fills in some gaps that Rails does not currently address.
 
+#### Rails Compatibility
+
+`controller_commands` is still early in development, but it has been used with Rails 4.2 and Rails 5.2. You may experience some rough edges.
+
 #### Filling Gaps In Rails
 
 What gaps does this gem fill? There are two problems that are not currently addressed well in Rails.
