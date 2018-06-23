@@ -1,0 +1,10 @@
+# frozen_string_literal: true
+source 'https://rubygems.org'
+
+# Core
+gem 'minitest'
+gem 'rake'
+gem 'httpclient'
+
+# Debugging
+gem 'pry'
