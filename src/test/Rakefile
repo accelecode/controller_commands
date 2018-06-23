@@ -1,0 +1,69 @@
+desc 'Start the http server (for convenience during development)'
+task :server do
+  # start the static file server
+  `ruby -run -ehttpd ./site -p8000`
+end
+
+desc 'Run all tests; pattern is not required.'
+task :test, [:pattern] do |t, args|
+  require 'httpclient'
+
+  pattern = args.fetch(:pattern, './tests/**/test_*.rb')
+  file_paths = Dir.glob(pattern)
+
+  # determine whether we have any test files to run
+  if file_paths.length > 0
+    # start the rails server
+    pipe = nil
+    Bundler.with_clean_env do
+      Dir.chdir('test_app') do
+        pipe = IO.popen('bundle exec bin/rails server')
+      end
+    end
+
+    # Wait for the server to completely start up
+    client = HTTPClient.new
+    tries = 0
+    begin
+      sleep(1) if tries > 0
+      raise 'Rails server failed to start' if tries > 5
+
+      tries += 1
+      response = nil
+      response = client.get('http://localhost:3000/ping.txt')
+    rescue
+      # swallow errors
+    end while response == nil || response.body.strip != 'pong'
+    puts 'Rails server started'
+
+    # terminate rails app server after tests complete
+    require 'minitest'
+    Minitest.after_run do
+      print 'Stopping Rails server...'
+      `kill -9 #{pipe.pid}`
+      # loop through the remaining output, EOF means the process has ended
+      loop do
+        puts pipe.readline
+      rescue EOFError
+        break
+      end
+      puts 'Rails server shutdown'
+    end
+
+    # register tests to execute (via Minitest#autorun) at process exit
+    puts "Files: #{file_paths.sort.join(' ')}"
+    file_paths.each { |file| require_relative(file) }
+  else
+    puts 'No matching test files'
+  end
+
+end
+
+desc 'Start irb'
+task :console do
+  require 'irb'
+  ARGV.clear
+  IRB.start
+end
+
+task default: :test
